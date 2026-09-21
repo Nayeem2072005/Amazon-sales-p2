@@ -59,6 +59,21 @@ page = st.sidebar.radio(
     ]
 )
 
+import psycopg2
+import pandas as pd
+
+@st.cache_resource
+def get_connection():
+    return psycopg2.connect(
+        host="localhost",
+        database="amazon_sales_db",
+        user="postgres",
+        password="naiim@2482",
+        port="5432"
+    )
+
+conn = get_connection()
+
 # ==========================================================
 # HOME PAGE
 # ==========================================================
@@ -904,6 +919,18 @@ if page == "EDA Analysis":
 
     plt.close(fig)
 
+
+
+    st.subheader("Question 21 : RFM Customer Segmentation")
+    rfm = pd.read_csv("outputs/rfm_segments.csv")
+    segment_counts = rfm["segment"].value_counts()
+    fig, ax = plt.subplots()
+    ax.bar(segment_counts.index, segment_counts.values, color="steelblue")
+    ax.set_xlabel("Segment")
+    ax.set_ylabel("Number of Customers")
+    plt.xticks(rotation=15)
+    st.pyplot(fig)
+    st.write(segment_counts)
     
 # ==========================================================
 # SQL ANALYSIS
@@ -919,11 +946,9 @@ if page == "SQL Analysis":
 
     # Query 1
     st.subheader("Query 1 - Total Revenue")
-
-    st.code("""
-SELECT SUM(final_amount_inr)
-FROM amazon_sales;
-""", language="sql")
+    st.code("SELECT SUM(final_amount_inr) FROM amazon_sales;", language="sql")
+    result = pd.read_sql_query("SELECT SUM(final_amount_inr) AS total FROM amazon_sales;", conn)
+    st.success(f"Total Revenue : ₹ {result['total'][0]:,.2f}")
 
     revenue = df["final_amount_inr"].sum()
 
@@ -1089,6 +1114,31 @@ FROM amazon_sales;
 
     st.success(f"Average Order Value : ₹ {avg:,.2f}")
 
+    st.write("---")
+
+    # Query 11
+    st.subheader("Query 11 - Top Customer States by Revenue (via JOIN)")
+
+    st.code("""
+SELECT c.customer_state, SUM(a.final_amount_inr) AS total_revenue
+FROM amazon_sales a
+JOIN customers c ON a.customer_id = c.customer_id
+GROUP BY c.customer_state
+ORDER BY total_revenue DESC
+LIMIT 10;
+""", language="sql")
+
+    customers_lookup = df[["customer_id", "customer_state"]].drop_duplicates()
+    joined = df[["customer_id", "final_amount_inr"]].merge(customers_lookup, on="customer_id")
+    top_states = (
+        joined.groupby("customer_state")["final_amount_inr"]
+        .sum()
+        .sort_values(ascending=False)
+        .head(10)
+    )
+
+    st.dataframe(top_states)
+
 
 # ==========================================================
 # POWER BI DASHBOARD
@@ -1103,24 +1153,26 @@ The Power BI Dashboard was created separately using Microsoft Power BI Desktop.
 
 The dashboard contains:
 
-• KPI Cards
+- KPI Cards
 
-• Monthly Revenue Trend
+- Monthly Revenue Trend
 
-• Top 10 Brands
+- Top 10 Brands
 
-• Revenue by State
+- Revenue by State
 
-• Revenue by Subcategory
+- Revenue by Subcategory
 
-• Payment Method Analysis
+- Payment Method Analysis
 
-• Prime vs Non Prime Orders
+- Prime vs Non Prime Orders
 
-• Festival Sales Analysis
+- Festival Sales Analysis
 """)
 
-    st.info("Open the Power BI (.pbix) file to view the complete interactive dashboard.")
+    st.image("powerbi/amazon_dashboard.png", caption="Amazon India Sales Dashboard (Power BI)", use_column_width=True)
+
+    st.info("Open the Power BI (.pbix) file in this repository to view and interact with the full dashboard, including cross-filtering between charts.")
 
 # ==========================================================
 # ABOUT PROJECT
